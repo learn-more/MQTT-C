@@ -5,6 +5,10 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#if defined(WIN32)
+#pragma comment(lib, "ws2_32.lib")
+#endif
+
 /*
     A template for opening a non-blocking OpenSSL connection.
 */

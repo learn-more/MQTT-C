@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.2)
 project(MQTT-C)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
+
 # Add this include directory for all applications
 include_directories(include)
 
@@ -14,10 +16,14 @@ find_package(Threads REQUIRED)
 # Search for openssl
 find_package(OpenSSL REQUIRED)
 
-# Search the cmocka  unittest library
-find_library(CMOCKA_LIBRARY cmocka)
+find_package(CMocka REQUIRED)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra -Wall -std=gnu99 -Iinclude -Wno-unused-parameter -Wno-unused-variable -Wno-duplicate-decl-specifier")
+if(NOT MSVC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra -Wall -std=gnu99 -Iinclude -Wno-unused-parameter -Wno-unused-variable -Wno-duplicate-decl-specifier")
+else()
+    # Disable CRT warnings on 'unsecure' api, disable some crap in the windows headers
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS -DNOMINMAX -DWIN32_LEAN_AND_MEAN)
+endif()
 
 # Simple projects
 add_executable(simple_publisher examples/simple_publisher.c ${MQTT_C_SOURCES})

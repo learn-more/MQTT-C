@@ -49,8 +49,8 @@ static ssize_t  actual_lengths[] = { 2, 2, 3, 3, 4, 4, 5, 5, MQTT_ERROR_INVALID_
             buf[4] = 0x86;
 
         /* another unavoidable lie */
-	rv = mqtt_unpack_fixed_header(&response, buf, sizeof(buf) + remaining_lengths[k]);
-	assert_true(rv == actual_lengths[k]);
+    rv = mqtt_unpack_fixed_header(&response, buf, sizeof(buf) + remaining_lengths[k]);
+    assert_true(rv == actual_lengths[k]);
 
         if(k != 8)
             assert_true(remaining_lengths[k] == response.fixed_header.remaining_length);

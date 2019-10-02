@@ -3,12 +3,25 @@
  * @file
  * A simple program that subscribes to a topic.
  */
+#if !defined(WIN32)
 #include <unistd.h>
+#else
+#define sleep(sec)		Sleep((sec) * 1000)
+#define usleep(usec)	Sleep((usec) / 1000)
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 
 #include <mqtt.h>
+
+#if !defined(WIN32)
 #include "templates/posix_sockets.h"
+#include "templates/posix_threads.h"
+#else
+#include "templates/winapi_sockets.h"
+#include "templates/winapi_threads.h"
+#endif
 
 
 /**
@@ -24,12 +37,12 @@ void publish_callback(void** unused, struct mqtt_response_publish *published);
  *       \ref __mqtt_send every so often. I've picked 100 ms meaning that 
  *       client ingress/egress traffic will be handled every 100 ms.
  */
-void* client_refresher(void* client);
+thread_return_type client_refresher(void* client);
 
 /**
  * @brief Safelty closes the \p sockfd and cancels the \p client_daemon before \c exit. 
  */
-void exit_example(int status, int sockfd, pthread_t *client_daemon);
+void exit_example(int status, mqtt_pal_socket_handle sockfd, thread_handle_type *client_daemon);
 
 int main(int argc, const char *argv[]) 
 {
@@ -58,10 +71,14 @@ int main(int argc, const char *argv[])
         topic = "datetime";
     }
 
-    /* open the non-blocking TCP socket (connecting to the broker) */
-    int sockfd = open_nb_socket(addr, port);
+    if (init_nb_socket()) {
+        exit_example(EXIT_FAILURE, MQTT_INVALID_SOCKET_HANDLE, NULL);
+    }
 
-    if (sockfd == -1) {
+    /* open the non-blocking TCP socket (connecting to the broker) */
+    mqtt_pal_socket_handle sockfd = open_nb_socket(addr, port);
+
+    if (sockfd == MQTT_INVALID_SOCKET_HANDLE) {
         perror("Failed to open socket: ");
         exit_example(EXIT_FAILURE, sockfd, NULL);
     }
@@ -80,8 +97,8 @@ int main(int argc, const char *argv[])
     }
 
     /* start a thread to refresh the client (handle egress and ingree client traffic) */
-    pthread_t client_daemon;
-    if(pthread_create(&client_daemon, NULL, client_refresher, &client)) {
+    thread_handle_type client_daemon;
+    if (create_thread(&client_daemon, client_refresher, &client)) {
         fprintf(stderr, "Failed to start client daemon.\n");
         exit_example(EXIT_FAILURE, sockfd, NULL);
 
@@ -105,10 +122,12 @@ int main(int argc, const char *argv[])
     exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
 }
 
-void exit_example(int status, int sockfd, pthread_t *client_daemon)
+void exit_example(int status, mqtt_pal_socket_handle sockfd, thread_handle_type *client_daemon)
 {
-    if (sockfd != -1) close(sockfd);
-    if (client_daemon != NULL) pthread_cancel(*client_daemon);
+    if (sockfd != MQTT_INVALID_SOCKET_HANDLE) close_nb_socket(sockfd);
+    if (client_daemon != NULL) cancel_thread(*client_daemon);
+
+    shutdown_nb_socket();
     exit(status);
 }
 
@@ -126,12 +145,14 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
     free(topic_name);
 }
 
-void* client_refresher(void* client)
+thread_return_type client_refresher(void* client)
 {
     while(1) 
     {
         mqtt_sync((struct mqtt_client*) client);
         usleep(100000U);
     }
+#if !defined(WIN32)
     return NULL;
+#endif
 }

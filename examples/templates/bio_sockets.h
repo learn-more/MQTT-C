@@ -5,6 +5,10 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#if defined(WIN32)
+#pragma comment(lib, "ws2_32.lib")
+#endif
+
 /*
     A template for opening a non-blocking BIO socket.
 */
@@ -14,7 +18,7 @@ BIO* open_nb_socket(const char* addr, const char* port) {
     BIO_set_conn_port(bio, port);
 
     /* timeout after 10 seconds */
-    int start_time = time(NULL);
+    int start_time = (int)time(NULL);
     while(BIO_do_connect(bio) == 0 && (int)time(NULL) - start_time < 10);
 
     if (BIO_do_connect(bio) <= 0) {
@@ -22,7 +26,7 @@ BIO* open_nb_socket(const char* addr, const char* port) {
         return NULL;
     }
 
-    return bio; 
+    return bio;
 }
 
 #endif

@@ -10,6 +10,11 @@
 /*
     A template for opening a non-blocking POSIX socket.
 */
+int init_nb_socket()
+{
+    return 0;
+}
+
 int open_nb_socket(const char* addr, const char* port) {
     struct addrinfo hints = {0};
 
@@ -35,7 +40,7 @@ int open_nb_socket(const char* addr, const char* port) {
         rv = connect(sockfd, servinfo->ai_addr, servinfo->ai_addrlen);
         if(rv == -1) continue;
         break;
-    }  
+    }
 
     /* free servinfo */
     freeaddrinfo(servinfo);
@@ -44,7 +49,16 @@ int open_nb_socket(const char* addr, const char* port) {
     if (sockfd != -1) fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL) | O_NONBLOCK);
 
     /* return the new socket fd */
-    return sockfd;  
+    return sockfd;
+}
+
+void close_nb_socket(int sock)
+{
+    close(sock);
+}
+
+void shutdown_nb_socket()
+{
 }
 
 #endif

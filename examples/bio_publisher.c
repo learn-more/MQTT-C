@@ -3,12 +3,23 @@
  * @file
  * A simple program to that publishes the current time whenever ENTER is pressed. 
  */
+#if !defined(WIN32)
 #include <unistd.h>
+#else
+#define sleep(sec)          Sleep((sec) * 1000)
+#define usleep(usec)        Sleep((usec) / 1000)
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 
 #include <mqtt.h>
 #include "templates/bio_sockets.h"
+#if !defined(WIN32)
+#include "templates/posix_threads.h"
+#else
+#include "templates/winapi_threads.h"
+#endif
 
 
 /**
@@ -26,12 +37,12 @@ void publish_callback(void** unused, struct mqtt_response_publish *published);
  *       \ref __mqtt_send every so often. I've picked 100 ms meaning that 
  *       client ingress/egress traffic will be handled every 100 ms.
  */
-void* client_refresher(void* client);
+thread_return_type client_refresher(void* client);
 
 /**
  * @brief Safelty closes the \p sockfd and cancels the \p client_daemon before \c exit. 
  */
-void exit_example(int status, BIO* sockfd, pthread_t *client_daemon);
+void exit_example(int status, BIO* sockfd, thread_handle_type *client_daemon);
 
 /**
  * A simple program to that publishes the current time whenever ENTER is pressed. 
@@ -89,8 +100,8 @@ int main(int argc, const char *argv[])
     }
 
     /* start a thread to refresh the client (handle egress and ingree client traffic) */
-    pthread_t client_daemon;
-    if(pthread_create(&client_daemon, NULL, client_refresher, &client)) {
+    thread_handle_type client_daemon;
+    if (create_thread(&client_daemon, client_refresher, &client)) {
         fprintf(stderr, "Failed to start client daemon.\n");
         exit_example(EXIT_FAILURE, sockfd, NULL);
 
@@ -131,10 +142,10 @@ int main(int argc, const char *argv[])
     exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
 }
 
-void exit_example(int status, BIO* sockfd, pthread_t *client_daemon)
+void exit_example(int status, BIO* sockfd, thread_handle_type *client_daemon)
 {
     if (sockfd != NULL) BIO_free_all(sockfd);
-    if (client_daemon != NULL) pthread_cancel(*client_daemon);
+    if (client_daemon != NULL) cancel_thread(*client_daemon);
     exit(status);
 }
 
@@ -145,12 +156,14 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
     /* not used in this example */
 }
 
-void* client_refresher(void* client)
+thread_return_type client_refresher(void* client)
 {
     while(1) 
     {
         mqtt_sync((struct mqtt_client*) client);
         usleep(100000U);
     }
+#if !defined(WIN32)
     return NULL;
+#endif
 }

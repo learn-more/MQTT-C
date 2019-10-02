@@ -3,12 +3,25 @@
  * @file
  * A simple subscriber program that performs automatic reconnections.
  */
+#if !defined(WIN32)
 #include <unistd.h>
+#else
+#define sleep(sec)          Sleep((sec) * 1000)
+#define usleep(usec)        Sleep((usec) / 1000)
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 
 #include <mqtt.h>
+
+#if !defined(WIN32)
 #include "templates/posix_sockets.h"
+#include "templates/posix_threads.h"
+#else
+#include "templates/winapi_sockets.h"
+#include "templates/winapi_threads.h"
+#endif
 
 /**
  * @brief A structure that I will use to keep track of some data needed 
@@ -47,12 +60,12 @@ void publish_callback(void** unused, struct mqtt_response_publish *published);
  *       \ref __mqtt_send every so often. I've picked 100 ms meaning that 
  *       client ingress/egress traffic will be handled every 100 ms.
  */
-void* client_refresher(void* client);
+thread_return_type client_refresher(void* client);
 
 /**
  * @brief Safelty closes the \p sockfd and cancels the \p client_daemon before \c exit. 
  */
-void exit_example(int status, int sockfd, pthread_t *client_daemon);
+void exit_example(int status, mqtt_pal_socket_handle sockfd, thread_handle_type *client_daemon);
 
 
 int main(int argc, const char *argv[]) 
@@ -82,6 +95,10 @@ int main(int argc, const char *argv[])
         topic = "datetime";
     }
 
+    if (init_nb_socket()) {
+        exit_example(EXIT_FAILURE, MQTT_INVALID_SOCKET_HANDLE, NULL);
+    }
+
     /* build the reconnect_state structure which will be passed to reconnect */
     struct reconnect_state_t reconnect_state;
     reconnect_state.hostname = addr;
@@ -103,11 +120,10 @@ int main(int argc, const char *argv[])
     );
 
     /* start a thread to refresh the client (handle egress and ingree client traffic) */
-    pthread_t client_daemon;
-    if(pthread_create(&client_daemon, NULL, client_refresher, &client)) {
+    thread_handle_type client_daemon;
+    if (create_thread(&client_daemon, client_refresher, &client)) {
         fprintf(stderr, "Failed to start client daemon.\n");
-        exit_example(EXIT_FAILURE, -1, NULL);
-
+        exit_example(EXIT_FAILURE, MQTT_INVALID_SOCKET_HANDLE, NULL);
     }
 
     /* start publishing the time */
@@ -135,7 +151,7 @@ void reconnect_client(struct mqtt_client* client, void **reconnect_state_vptr)
 
     /* Close the clients socket if this isn't the initial reconnect call */
     if (client->error != MQTT_ERROR_INITIAL_RECONNECT) {
-        close(client->socketfd);
+        close_nb_socket(client->socketfd);
     }
 
     /* Perform error handling here. */
@@ -146,8 +162,8 @@ void reconnect_client(struct mqtt_client* client, void **reconnect_state_vptr)
     }
 
     /* Open a new socket. */
-    int sockfd = open_nb_socket(reconnect_state->hostname, reconnect_state->port);
-    if (sockfd == -1) {
+    mqtt_pal_socket_handle sockfd = open_nb_socket(reconnect_state->hostname, reconnect_state->port);
+    if (sockfd == MQTT_INVALID_SOCKET_HANDLE) {
         perror("Failed to open socket: ");
         exit_example(EXIT_FAILURE, sockfd, NULL);
     }
@@ -165,10 +181,12 @@ void reconnect_client(struct mqtt_client* client, void **reconnect_state_vptr)
     mqtt_subscribe(client, reconnect_state->topic, 0);
 }
 
-void exit_example(int status, int sockfd, pthread_t *client_daemon)
+void exit_example(int status, mqtt_pal_socket_handle sockfd, thread_handle_type *client_daemon)
 {
-    if (sockfd != -1) close(sockfd);
-    if (client_daemon != NULL) pthread_cancel(*client_daemon);
+    if (sockfd != MQTT_INVALID_SOCKET_HANDLE) close_nb_socket(sockfd);
+    if (client_daemon != NULL) cancel_thread(*client_daemon);
+
+    shutdown_nb_socket();
     exit(status);
 }
 
@@ -184,12 +202,14 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
     free(topic_name);
 }
 
-void* client_refresher(void* client)
+thread_return_type client_refresher(void* client)
 {
     while(1) 
     {
         mqtt_sync((struct mqtt_client*) client);
         usleep(100000U);
     }
+#if !defined(WIN32)
     return NULL;
+#endif
 }
